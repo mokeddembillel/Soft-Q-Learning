@@ -6,3 +6,4 @@ tmp/sac/critic_1_sac
 tmp/sac/actor_sac
 tmp/sac/target_value_sac
 tmp/sac/value_sac
+.ipynb_checkpoints/Stein-checkpoint.ipynb

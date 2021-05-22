@@ -7,3 +7,6 @@ tmp/sac/actor_sac
 tmp/sac/target_value_sac
 tmp/sac/value_sac
 .ipynb_checkpoints/Stein-checkpoint.ipynb
+*.ipynb
+tmp/sql/Sampler_Sampler
+tmp/sql/ActionValueNetwork_sql

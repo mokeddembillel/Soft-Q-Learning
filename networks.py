@@ -9,7 +9,7 @@ import numpy as np
 
 
 class ActionValueNetwork(nn.Module):
-    def __init__(self, beta, state_dim, action_dim, n_particles,
+    def __init__(self, lr, state_dim, action_dim, n_particles,
             name='ActionValueNetwork', chkpt_dir='tmp/sql'):
         super(ActionValueNetwork, self).__init__()
         
@@ -44,7 +44,7 @@ class ActionValueNetwork(nn.Module):
         self.double()
         
         
-        self.optimizer = optim.Adam(self.parameters(), lr=beta)
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
 
         self.to(self.device)
@@ -71,7 +71,7 @@ class ActionValueNetwork(nn.Module):
 
 
 class SamplerNetwork(nn.Module):
-    def __init__(self, alpha, state_dim, n_particles,
+    def __init__(self, lr, state_dim, n_particles,
             action_dim=2, max_action=1000, name='Sampler', chkpt_dir='tmp/sql'):
         super(SamplerNetwork, self).__init__()
         
@@ -103,7 +103,7 @@ class SamplerNetwork(nn.Module):
     
         self.double()
         
-        self.optimizer = optim.Adam(self.parameters(), lr=alpha)
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
         self.to(self.device)
         self.name = name

@@ -9,7 +9,7 @@ from torch.distributions.normal import Normal
 
 
 class Agent():
-    def __init__(self, alpha=0.5, beta=0.0003, state_dim=[8], action_dim=2, n_particles=16,
+    def __init__(self, beta=0.0003, state_dim=[8], action_dim=2, n_particles=16,
             env=None, gamma=0.99, max_size=1000000, tau=0.005, max_action=1000,
             batch_size=100, reward_scale=2):
         
@@ -18,18 +18,17 @@ class Agent():
         self.memory = ReplayBuffer(max_size, state_dim, action_dim)
         self.batch_size = batch_size
         self.action_dim = action_dim
-        self.alpha = alpha
         self.n_particles = n_particles
         
         self.update_ratio = 0.5
 
 
         # Q Network
-        self.Q_Network = ActionValueNetwork(alpha, state_dim=state_dim, action_dim=action_dim,
+        self.Q_Network = ActionValueNetwork(lr=1e-4, state_dim=state_dim, action_dim=action_dim,
                     n_particles=n_particles, name='ActionValueNetwork')
         self.Q_Network.double()
         # q Arbitrary Network
-        self.SVGD_Network = SamplerNetwork(alpha, state_dim=state_dim, action_dim=action_dim,
+        self.SVGD_Network = SamplerNetwork(lr=1e-3, state_dim=state_dim, action_dim=action_dim,
                     n_particles=n_particles, max_action=max_action)
         self.SVGD_Network.double()
         self.reward_scale = reward_scale
@@ -161,7 +160,7 @@ class Agent():
                 
         # Calculate the Q-value using the Q-network for next states (state_) (bs, np, 1)
         Q_soft_ = self.get_Q_value(state_, action_, training=True, particles=True)
-        print(Q_soft_)
+        #print(Q_soft_)
         
         
         # Equation 10 
@@ -188,18 +187,20 @@ class Agent():
         with T.no_grad():
             Q_soft_hat = self.reward_scale * reward.unsqueeze(-1) + self.gamma * (1 - done.unsqueeze(-1)) * V_soft_ # (bs, 1)
             #Q_soft_hat = self.reward_scale * reward.unsqueeze(-1) + self.gamma * (1 - done.unsqueeze(-1)) * Q_soft_ # (bs, 1)
-        print(Q_soft_hat)
+        #print(Q_soft_hat)
         # Calculate the Q-value using the Q-network for current states (state) 
         Q_soft = self.get_Q_value(state, action, training=True, particles=False) # (bs, np)
-        print('Q', Q_soft)
+        #print('Q', Q_soft)
 
 
         # Equation 11 
         J_Q = 0.5 * T.mean((Q_soft_hat - Q_soft) ** 2, dim=0)
         
-        print(J_Q)
+        #print(J_Q)
         
         # Update Q Network 
+        # Q_network_loss = T.tensor([5.0])
+        # Q_network_loss.requires_grad = True
         Q_network_loss = J_Q
         self.Q_Network.optimizer.zero_grad()
         Q_network_loss.backward()
@@ -207,38 +208,37 @@ class Agent():
         
         # -------- Update The Policy -------- #
         
-        
-        # if steps%50 == 0:
-        #     # Compute aciton    
-        #     action_svgd = self.get_action_svgd(state, training=True, particles=True) # (bs, np, ad)
-        #     print('action_svgd', action_svgd)
-        #     #print(state)
-        #     svgd_Q_soft = self.get_Q_value(state, action_svgd, training=True, particles=True) # (bs, np, 1)
-        #     # print('action_svgd : ', action_svgd.squeeze(-1))
-        #     # print('svgd_Q_soft : ', svgd_Q_soft)
+        if steps%1 == 0:
+            # Compute aciton    
+            action_svgd = self.get_action_svgd(state, training=True, particles=True) # (bs, np, ad)
+            #print('action_svgd', action_svgd)
+            #print(state)
+            svgd_Q_soft = self.get_Q_value(state, action_svgd, training=True, particles=True) # (bs, np, 1)
+            # print('action_svgd : ', action_svgd.squeeze(-1))
+            # print('svgd_Q_soft : ', svgd_Q_soft)
     
-        #     squash_correction = T.sum(T.log(1 - action_svgd**2 + 1e-6), dim=-1)
-        #     svgd_Q_soft = T.add(svgd_Q_soft, squash_correction.unsqueeze(-1))
+            squash_correction = T.sum(T.log(1 - action_svgd**2 + 1e-6), dim=-1)
+            svgd_Q_soft = T.add(svgd_Q_soft, squash_correction.unsqueeze(-1))
     
-        #     #print(action_svgd_2d)
-        #     #print(svgd_Q_soft)
-        #     # Get the Gradients of the energy with respect to x and y
-        #     grad_score = T.autograd.grad(svgd_Q_soft.sum(), action_svgd)[0].squeeze(-1)
-        #     #print(grad_score)# (bs, np * ad)
+            #print(action_svgd_2d)
+            #print(svgd_Q_soft)
+            # Get the Gradients of the energy with respect to x and y
+            grad_score = T.autograd.grad(svgd_Q_soft.sum(), action_svgd)[0].squeeze(-1)
+            #print(grad_score)# (bs, np * ad)
            
-        #     # Compute the similarity using the RBF kernel 
-        #     # kappa grad_kappa= T.empty(1)
-        #     # for i in range(self.batch_size): 
-        #     kappa, grad_kappa = self.rbf_kernel(input_1=action_svgd, input_2=action_svgd) # (bs, np, ad)
+            # Compute the similarity using the RBF kernel 
+            # kappa grad_kappa= T.empty(1)
+            # for i in range(self.batch_size): 
+            kappa, grad_kappa = self.rbf_kernel(input_1=action_svgd, input_2=action_svgd) # (bs, np, ad)
                 
         
-        #     # print(a.mean())
-        #     # print(grad_kappa.mean())
-        #     svgd = T.sum(kappa * grad_score.unsqueeze(2) + grad_kappa, dim=1) / self.n_particles # (bs, np * ad)
-        #     #print('svgd : ' ,svgd)
-        #     self.SVGD_Network.optimizer.zero_grad()
-        #     T.autograd.backward(-action_svgd, grad_tensors=svgd)
-        #     self.SVGD_Network.optimizer.step()  
+            # print(a.mean())
+            # print(grad_kappa.mean())
+            svgd = T.sum(kappa * grad_score.unsqueeze(2) + grad_kappa, dim=1) / self.n_particles # (bs, np * ad)
+            #print('svgd : ' ,svgd)
+            self.SVGD_Network.optimizer.zero_grad()
+            T.autograd.backward(-action_svgd, grad_tensors=svgd)
+            self.SVGD_Network.optimizer.step()  
         
         
         

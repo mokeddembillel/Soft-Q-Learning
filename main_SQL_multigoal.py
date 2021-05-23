@@ -52,7 +52,7 @@ if __name__ == '__main__':
     # print(env.observation_space.shape)
     # print(env.action_space.shape)
     agent = Agent(state_dim=env.observation_space.shape[0], env=env,
-            action_dim=env.action_space.shape[0], n_particles=3, batch_size=5, reward_scale=0.1, max_action=env.action_space.high)
+            action_dim=env.action_space.shape[0], n_particles=50, batch_size=100, reward_scale=0.1, max_action=env.action_space.high)
     n_games = 50
     # uncomment this line and do a mkdir tmp && mkdir video if you want to
     # record video of the agent playing the game.
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     score_history = []
     load_checkpoint = False
     
-    max_episode_length = 20
+    max_episode_length = 400
 
     if load_checkpoint:
         agent.load_models()
@@ -92,7 +92,7 @@ if __name__ == '__main__':
             
             if episode_length == max_episode_length:
                 done = True
-            
+            #print(episode_length)
             #print('re:', reward)
             #print('Q: ', np.squeeze(env.get_Q()))
             score += reward

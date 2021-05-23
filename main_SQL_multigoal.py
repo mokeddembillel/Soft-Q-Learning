@@ -52,7 +52,7 @@ if __name__ == '__main__':
     # print(env.observation_space.shape)
     # print(env.action_space.shape)
     agent = Agent(state_dim=env.observation_space.shape[0], env=env,
-            action_dim=env.action_space.shape[0], n_particles=50, batch_size=100, reward_scale=0.1, max_action=env.action_space.high)
+            action_dim=env.action_space.shape[0], n_particles=3, batch_size=5, reward_scale=0.1, max_action=env.action_space.high)
     n_games = 50
     # uncomment this line and do a mkdir tmp && mkdir video if you want to
     # record video of the agent playing the game.
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     score_history = []
     load_checkpoint = False
     
-    max_episode_length = 400
+    max_episode_length = 20
 
     if load_checkpoint:
         agent.load_models()
@@ -80,6 +80,7 @@ if __name__ == '__main__':
         
         done = False
         score = 0
+        
         while not done:
             #env.render()
             #print('state: ', np.squeeze(observation))
@@ -91,16 +92,16 @@ if __name__ == '__main__':
             
             if episode_length == max_episode_length:
                 done = True
-            episode_length += 1
             
             #print('re:', reward)
             #print('Q: ', np.squeeze(env.get_Q()))
             score += reward
             agent.remember(observation, action, reward, observation_, done)
             if not load_checkpoint:
-                agent.learn()
+                agent.learn(episode_length)
             observation = observation_
-            
+            episode_length += 1
+
             
         score = score 
         score_history.append(score)
@@ -115,9 +116,10 @@ if __name__ == '__main__':
         plot(agent)
         
         
+        
     #agent.actor.sample_normal(T.FloatTensor([2.5,2.5]).repeat([100,1]))[0].detach().numpy()
     
-    plotter = QFPolicyPlotter(qf = agent.critic_1, policy=agent.actor, obs_lst=[[-2,0],[0,2],[2.5,2.5]], default_action =[np.nan,np.nan], n_samples=50)
+    plotter = QFPolicyPlotter(qf = agent.Q_Network, policy=agent.SVGD_Network, obs_lst=[[-2,0],[0,2],[2.5,2.5]], default_action =[np.nan,np.nan], n_samples=50)
     plotter.draw()
 
 

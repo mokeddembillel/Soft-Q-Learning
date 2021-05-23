@@ -9,7 +9,7 @@ import numpy as np
 
 
 class ActionValueNetwork(nn.Module):
-    def __init__(self, beta, state_dim, action_dim, n_particles, fc1_dims=256, fc2_dims=256,
+    def __init__(self, beta, state_dim, action_dim, n_particles,
             name='ActionValueNetwork', chkpt_dir='tmp/sql'):
         super(ActionValueNetwork, self).__init__()
         
@@ -24,20 +24,20 @@ class ActionValueNetwork(nn.Module):
 
         # Initialize Input dimentions
         self.state_dim = self.state_dim
-        self.fc2_dim = 128
-        self.fc3_dim = 1
+        self.hidden_dim = 128
+        self.output_dim = 1
         
-        #self.fc1 = nn.Linear(self.fc1_dim, self.fc3_dim)
+        #self.fc1 = nn.Linear(self.fc1_dim, self.output_dim)
         
         # Define the NN layers
-        self.state = nn.Linear(self.state_dim, self.fc2_dim)
-        self.action = nn.Linear(self.action_dim, self.fc2_dim)
-        self.fc2 = nn.Linear(self.fc2_dim, self.fc2_dim)
-        self.fc3 = nn.Linear(self.fc2_dim, self.fc3_dim)
+        self.state = nn.Linear(self.state_dim, self.hidden_dim)
+        self.action = nn.Linear(self.action_dim, self.hidden_dim)
+        self.hidden_1 = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.output = nn.Linear(self.hidden_dim, self.output_dim)
         
-        # self.bn1 = nn.BatchNorm1d(self.fc2_dim)
-        # self.bn2 = nn.BatchNorm1d(self.fc2_dim)
-        # self.bn3 = nn.BatchNorm1d(self.fc3_dim)
+        # self.bn1 = nn.BatchNorm1d(self.hidden_dim)
+        # self.bn2 = nn.BatchNorm1d(self.hidden_dim)
+        # self.bn3 = nn.BatchNorm1d(self.output_dim)
         
         self.apply(self.init_weights)
        
@@ -54,10 +54,9 @@ class ActionValueNetwork(nn.Module):
         X_a = self.action(action)
         
         X = T.relu(X_s + X_a)
-        X = self.fc2(X)
-        X = T.relu(X)
-        X = self.fc3(X)
-        return T.sigmoid(X)
+        X = T.relu(self.hidden_1(X))
+        X = T.sigmoid(self.output(X))
+        return X
     
     def init_weights(self, m):
         if type(m) == nn.Linear:
@@ -85,24 +84,22 @@ class SamplerNetwork(nn.Module):
         # Initialize Input dimentions
         self.state_dim = self.state_dim
         self.noise_dim = self.action_dim
-        self.fc2_dim = 512
-        self.fc3_dim = 512
-        self.fc4_dim = 512
-        self.fc5_dim = self.action_dim
+        self.hidden_dim = 128
+        self.output_dim = self.action_dim
         
         
-        self.state = nn.Linear(self.state_dim, self.fc2_dim)
-        self.noise = nn.Linear(self.noise_dim, self.fc2_dim)        
-        self.fc2 = nn.Linear(self.fc2_dim, self.fc2_dim)
-        self.fc3 = nn.Linear(self.fc2_dim, self.fc2_dim)
-        self.fc4 = nn.Linear(self.fc2_dim, self.fc2_dim)
-        self.fc5 = nn.Linear(self.fc2_dim, self.fc5_dim)
+        self.state = nn.Linear(self.state_dim, self.hidden_dim)
+        self.noise = nn.Linear(self.noise_dim, self.hidden_dim)        
+        self.hidden_1 = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.hidden_2 = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.hidden_3 = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.output = nn.Linear(self.hidden_dim, self.output_dim)
         
         self.apply(self.init_weights)
-        # self.bn1 = nn.BatchNorm1d(self.fc2_dim)
-        # self.bn2 = nn.BatchNorm1d(self.fc2_dim)
-        # self.bn3 = nn.BatchNorm1d(self.fc2_dim)
-        # self.bn4 = nn.BatchNorm1d(self.fc2_dim)
+        # self.bn1 = nn.BatchNorm1d(self.hidden_dim)
+        # self.bn2 = nn.BatchNorm1d(self.hidden_dim)
+        # self.bn3 = nn.BatchNorm1d(self.hidden_dim)
+        # self.bn4 = nn.BatchNorm1d(self.hidden_dim)
     
         self.double()
         
@@ -117,13 +114,13 @@ class SamplerNetwork(nn.Module):
         X_s = self.state(state)
         X_n = self.noise(noise)
         X = F.dropout(T.tanh(X_s + X_n), 0.2)
-        X = self.fc2(X)
+        X = self.hidden_1(X)
         X = F.dropout(T.tanh(X), 0.2)
-        X = self.fc3(X)
+        X = self.hidden_2(X)
         X = F.dropout(T.tanh(X), 0.2)
-        X = self.fc4(X)
+        X = self.hidden_3(X)
         X = F.dropout(T.tanh(X), 0.2)
-        X = self.fc5(X)
+        X = self.output(X)
         #return F.tanh(X) * T.tensor(self.max_action).to(self.device)
         return T.tanh(X)
     

@@ -10,7 +10,7 @@ from torch.distributions.normal import Normal
 
 class Agent():
     def __init__(self, beta=0.0003, state_dim=[8], action_dim=2, n_particles=16,
-            env=None, gamma=0.99, max_size=1000000, tau=0.005, max_action=1000,
+            env=None, gamma=0.99, max_size=int(1e6), tau=0.005, max_action=1000,
             batch_size=100, reward_scale=2):
         
         self.gamma = gamma
@@ -24,11 +24,11 @@ class Agent():
 
 
         # Q Network
-        self.Q_Network = ActionValueNetwork(lr=1e-4, state_dim=state_dim, action_dim=action_dim,
+        self.Q_Network = ActionValueNetwork(lr=3e-4, state_dim=state_dim, action_dim=action_dim,
                     n_particles=n_particles, name='ActionValueNetwork')
         self.Q_Network.double()
         # q Arbitrary Network
-        self.SVGD_Network = SamplerNetwork(lr=1e-3, state_dim=state_dim, action_dim=action_dim,
+        self.SVGD_Network = SamplerNetwork(lr=3e-4, state_dim=state_dim, action_dim=action_dim,
                     n_particles=n_particles, max_action=max_action)
         self.SVGD_Network.double()
         self.reward_scale = reward_scale
@@ -122,15 +122,21 @@ class Agent():
             dist = Uniform(low, high)
             noise = dist.sample()
             #print(noise)
-
+            actions = self.SVGD_Network.forward(state.double().unsqueeze(1), noise.double())
         elif not training and not particles:
             low = T.full((1, 1, self.action_dim), -1.)
             high = T.full((1, 1, self.action_dim), 1.)
             dist = Uniform(low, high)
             noise = dist.sample()
             self.SVGD_Network.eval()
-
-        actions = self.SVGD_Network.forward(state.double().unsqueeze(1), noise.double())
+            actions = self.SVGD_Network.forward(state.double().unsqueeze(0), noise.double())
+        elif not training and particles:
+            low = T.full((1, self.n_particles, self.action_dim), -1.)
+            high = T.full((1, self.n_particles, self.action_dim), 1.)
+            dist = Uniform(low, high)
+            noise = dist.sample()
+            self.SVGD_Network.eval()
+            actions = self.SVGD_Network.forward(state.double().unsqueeze(0), noise.double())
         return actions
 
         
@@ -199,8 +205,6 @@ class Agent():
         #print(J_Q)
         
         # Update Q Network 
-        # Q_network_loss = T.tensor([5.0])
-        # Q_network_loss.requires_grad = True
         Q_network_loss = J_Q
         self.Q_Network.optimizer.zero_grad()
         Q_network_loss.backward()
@@ -234,7 +238,7 @@ class Agent():
         
             # print(a.mean())
             # print(grad_kappa.mean())
-            svgd = T.sum(kappa * grad_score.unsqueeze(2) + grad_kappa, dim=1) / self.n_particles # (bs, np * ad)
+            svgd = T.sum(kappa * grad_score.unsqueeze(2)  * 1000 + grad_kappa, dim=1) / self.n_particles # (bs, np * ad)
             #print('svgd : ' ,svgd)
             self.SVGD_Network.optimizer.zero_grad()
             T.autograd.backward(-action_svgd, grad_tensors=svgd)

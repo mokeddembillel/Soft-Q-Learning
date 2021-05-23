@@ -25,7 +25,7 @@ def plot(agent):
         while not done:
             env.render()
             #print('state: ', np.squeeze(observation))
-            action = agent.get_action_svgd(T.from_numpy(observation).unsqueeze(0)).squeeze().detach().numpy()
+            action = agent.get_action_svgd(T.from_numpy(observation).unsqueeze(0).double()).squeeze().detach().numpy()
 
             #print('ac: ', action[0].cpu().detach().numpy())
             observation_, reward, done, info = env.step(action)
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     # print(env.observation_space.shape)
     # print(env.action_space.shape)
     agent = Agent(state_dim=env.observation_space.shape[0], env=env,
-            action_dim=env.action_space.shape[0], n_particles=50, batch_size=100, reward_scale=0.1, max_action=env.action_space.high)
+            action_dim=env.action_space.shape[0], n_particles=32, batch_size=64, reward_scale=0.1, max_action=env.action_space.high)
     n_games = 50
     # uncomment this line and do a mkdir tmp && mkdir video if you want to
     # record video of the agent playing the game.
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     score_history = []
     load_checkpoint = False
     
-    max_episode_length = 400
+    max_episode_length = 100
 
     if load_checkpoint:
         agent.load_models()
@@ -119,7 +119,7 @@ if __name__ == '__main__':
         
     #agent.actor.sample_normal(T.FloatTensor([2.5,2.5]).repeat([100,1]))[0].detach().numpy()
     
-    plotter = QFPolicyPlotter(qf = agent.Q_Network, policy=agent.SVGD_Network, obs_lst=[[-2,0],[0,2],[2.5,2.5]], default_action =[np.nan,np.nan], n_samples=50)
+    plotter = QFPolicyPlotter(qf = agent.Q_Network, agent=agent, obs_lst=[[-2,0],[0,2],[2.5,2.5]], default_action =[np.nan,np.nan], n_samples=50)
     plotter.draw()
 
 

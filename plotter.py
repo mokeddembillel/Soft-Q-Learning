@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import torch 
 
 class QFPolicyPlotter:
-    def __init__(self, qf, agent, obs_lst, default_action, n_samples):
+    def __init__(self, qf, ss, obs_lst, default_action, n_samples):
         self._qf = qf
-        self._agent = agent
+        self._ss = ss
         self._obs_lst = obs_lst
         self._default_action = default_action
         self._n_samples = n_samples
@@ -56,7 +56,7 @@ class QFPolicyPlotter:
         for ax, obs in zip(self._ax_lst, self._obs_lst):
             obs = torch.FloatTensor(obs).repeat([actions.shape[0],1])
             with torch.no_grad():
-                qs = self._qf(obs.double(), actions.double()).numpy()
+                qs = self._qf(obs, actions).numpy()
 
             qs = qs.reshape(xgrid.shape)
 
@@ -68,7 +68,7 @@ class QFPolicyPlotter:
     def _plot_action_samples(self):
         for ax, obs in zip(self._ax_lst, self._obs_lst):
             with torch.no_grad():
-                actions = self._agent.get_action_svgd(torch.FloatTensor(obs), particles=True).numpy().squeeze()
+                actions = self._ss(torch.FloatTensor(obs).repeat([self._n_samples,1])).numpy().squeeze()
                 #print(actions)
             x, y = actions[:, 0], actions[:, 1]
             self._line_objects += ax.plot(x, y, 'b*')

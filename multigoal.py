@@ -33,7 +33,7 @@ class MultiGoalEnv(Env, EzPickle):
                 (0, -5)
             ),
             dtype=np.float32)
-        self.goal_threshold = 0.1 #1.0
+        self.goal_threshold = 0.05 #1.0
         self.goal_reward = goal_reward
         self.action_cost_coeff = actuation_cost_coeff
         self.distance_cost_coeff = distance_cost_coeff

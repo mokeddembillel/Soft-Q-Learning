@@ -3,9 +3,10 @@ import torch as T
 import torch.nn.functional as F
 import numpy as np
 from buffer import ReplayBuffer
-from networks import SamplingNetwork, MLPQFunction
+#from networks import ActionValueNetwork, SamplerNetwork
 from torch.distributions.uniform import Uniform
 from torch.distributions.normal import Normal
+from networks import SamplingNetwork, MLPQFunction
 import torch.optim as optim
 import time
 from copy import deepcopy
@@ -19,7 +20,7 @@ from multigoal import MultiGoalEnv
 
 class Agent():
     def __init__(self, env_fn, hidden_dim, 
-         replay_size, gamma, pi_lr, q_lr, batch_size, n_particles):
+         replay_size, gamma, pi_lr, q_lr, batch_size, noise_dim, n_particles):
 
         self.env= MultiGoalEnv()
         
@@ -38,10 +39,10 @@ class Agent():
         # Action limit for clamping: critically, assumes all dimensions share the same bound!
         
         # Create actor-critic module and target networks
-        self.Q_Network = MLPQFunction(self.env.observation_space, self.env.action_space, hidden_dim, T.nn.ReLU)
+        self.Q_Network = MLPQFunction(self.env.observation_space, self.env.action_space, hidden_dim)
         #self.ac_targ = deepcopy(self.ac)
         
-        self.SVGD_Network = SamplingNetwork(action_dim = self.action_dim, batch_size = self.batch_size, n_particles = self.n_particles,
+        self.SVGD_Network = SamplingNetwork(noise_dim = noise_dim, batch_size = self.batch_size, n_particles = self.n_particles,
                     observation_space= self.env.observation_space, action_space = self.env.action_space)
         # # Freeze target networks with respect to optimizers (only update via polyak averaging)
         # for p in self.ac_targ.parameters():
@@ -82,6 +83,7 @@ class Agent():
         # Construct the gradient
         kappa_grad = -2. * diff / h * kappa
         return kappa, kappa_grad
+    
     
     
     def compute_millowmax_target(self, Q_values):
@@ -150,6 +152,10 @@ class Agent():
         fixed_actions = T.from_numpy(fixed_actions)
         fixed_actions.requires_grad = True
         svgd_target_values = self.Q_Network(o, fixed_actions,n_sample = self.n_particles)
+        
+        # squash_correction = T.sum(T.log(1 - fixed_actions**2 + 1e-6), dim=-1)
+        # svgd_target_values = T.add(svgd_target_values, squash_correction)
+            
     
         # Target log-density. Q_soft in Equation 13:
         
@@ -188,7 +194,7 @@ class Agent():
         self.update_svgd_ss(data)
         #This PLACE
       
-   
+ 
      
     def get_sample(self, o,n_sample=1):
         a = self.SVGD_Network.act(T.as_tensor(o, dtype=T.float32),n_particles=n_sample)
@@ -201,13 +207,13 @@ class Agent():
         actions_plot=[]
         env = MultiGoalEnv()
     
-        for episode in range(50):
+        for episode in range(30):
             observation = env.reset()
             done = False
             step = 0
             path = {'infos':{'pos':[]}}
             particles = None
-            while not done and step < 20 :
+            while not done and step < 30 :
                 
                 actions = self.get_sample(observation,1)
                

@@ -8,6 +8,7 @@ import math
 from multigoal import MultiGoalEnv
 import torch as T
 from plotter import QFPolicyPlotter
+from networks import MLPActorCritic, SamplingNetwork
 
 
 if __name__ == "__main__":
@@ -19,13 +20,15 @@ if __name__ == "__main__":
     seed = 42
     gamma =0.99
     
-    agent = Agent(lambda : gym.make(env), 
-                  hidden_dim=[256, 256], replay_size=int(1e6), pi_lr=1e-3, 
-                  q_lr=1e-3, batch_size=100, n_particles=16, gamma=0.99)
+    agent = Agent(lambda : gym.make(env) , actor_critic=MLPActorCritic, sampler=SamplingNetwork, ac_kwargs=dict(hidden_sizes=[hid]*l),
+         steps_per_epoch=100, replay_size=int(1e6),
+         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100,noise_dim = 2, n_particles=16, start_steps=0, 
+         update_after=1000, update_every=1, act_noise=0.1, num_test_episodes=10, 
+         max_ep_len=30, gamma=gamma, seed=seed)
     
     
     update_every=1
-    update_after=1000
+    update_after=50
     max_ep_len=30
     start_steps=0
     steps_per_epoch=100
@@ -83,8 +86,6 @@ if __name__ == "__main__":
             epoch = (t+1) // steps_per_epoch
             print("epoch=",epoch)
             agent.plot_paths(epoch)
-            plotter = QFPolicyPlotter(qf = agent.Q_Network, ss=agent.SVGD_Network, obs_lst=[[0,0],[-2.5,-2.5],[2.5,2.5]], default_action =[np.nan,np.nan], n_samples=100)
-            plotter.draw()
 
             # Save model
             #if (epoch % save_freq == 0) or (epoch == epochs):
@@ -102,7 +103,8 @@ if __name__ == "__main__":
 
 
 
-
+# plotter = QFPolicyPlotter(qf = ac.q, policy=sampler, obs_lst=[[0,0],[-2.5,-2.5],[2.5,2.5],[-2.5,2.5],[2.5,-2.5]], default_action =[np.nan,np.nan], n_samples=100)
+# plotter.draw()
 
 
 

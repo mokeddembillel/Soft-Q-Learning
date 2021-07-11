@@ -10,3 +10,4 @@ tmp/sac/value_sac
 *.ipynb
 tmp/sql/Sampler_Sampler
 tmp/sql/ActionValueNetwork_sql
+*.npy

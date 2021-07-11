@@ -6,11 +6,14 @@ import torch.optim as optim
 from torch.distributions.normal import Normal
 import numpy as np
 
-def mlp(sizes, activation, output_activation=nn.Identity):
+def mlp(sizes, activation, output_activation=nn.Identity, dropout=False):
     layers = []
     for j in range(len(sizes)-1):
         act = activation if j < len(sizes)-2 else output_activation
-        layers += [nn.Linear(sizes[j], sizes[j+1]), act(), nn.Dropout(0.2)]
+        if dropout:
+            layers += [nn.Linear(sizes[j], sizes[j+1]), act(), nn.Dropout(0.2)]
+        else:
+            layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
     return nn.Sequential(*layers)
 
 
@@ -35,10 +38,9 @@ class MLPQFunction(nn.Module):
 
 
 class SamplingNetwork(nn.Module):
-    def __init__(self,noise_dim,n_particles,batch_size,observation_space,action_space,hidden_sizes = (256,256),
+    def __init__(self,n_particles,batch_size,observation_space,action_space,hidden_sizes = (256,256),
                 activation=nn.ReLU):
         super().__init__()
-        self.noise_dim = noise_dim
         self.n_particles = n_particles
         self.batch_size = batch_size
         self.obs_dim = observation_space.shape[0]
@@ -51,8 +53,8 @@ class SamplingNetwork(nn.Module):
         # self.noise_layer = mlp([self.act_dim, hidden_sizes[0]],activation)
         # self.layers = mlp(list(hidden_sizes) + [self.act_dim], activation, nn.Tanh)
 
-        self.concat = mlp([self.act_dim + self.noise_dim] + list(hidden_sizes),activation)
-        self.layer2 =  mlp(list(hidden_sizes) + [self.act_dim], nn.Tanh, nn.Tanh)
+        self.concat = mlp([self.obs_dim + self.act_dim] + list(hidden_sizes),activation, dropout=True)
+        self.layer2 =  mlp(list(hidden_sizes) + [self.act_dim], nn.Tanh, nn.Tanh, dropout=True)
 
     def _forward(self,state,n_particles = 1):
         n_state_samples = state.shape[0]

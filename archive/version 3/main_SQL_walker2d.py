@@ -26,15 +26,12 @@ if __name__ == "__main__":
     env = gym.make('Walker2d-v2')
     print(env.observation_space.shape)
     print(env.action_space.shape)
-    agent = Agent(env, 
-                  hidden_dim=[128, 128], replay_size=int(1e6), pi_lr=3e-4, 
+    agent = Agent(env, hidden_dim=[128, 128], replay_size=int(1e6), pi_lr=3e-4, 
                   q_lr=3e-4, batch_size=128, n_particles=16, gamma=0.99)
     
-    epochs=15
-    update_every=1
-    update_after=2000
-    max_ep_len=30
-    start_steps=0
+    reward_scale = 10
+    epochs=5000
+    update_after=1000
     steps_per_epoch=1000
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
@@ -52,10 +49,9 @@ if __name__ == "__main__":
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards, 
         # use the learned policy (with some noise, via act_noise). 
-        if t > start_steps:
-            a = agent.get_sample(o)
-        else:
-            a = env.action_space.sample()
+        
+        a = agent.get_sample(o)
+        
         
         # Step the env
         o2, r, d, _ = env.step(a)
@@ -63,22 +59,21 @@ if __name__ == "__main__":
         print(t)
         ep_ret += r
         ep_len += 1
-        #print("t=",t,"ep_ret=",ep_ret, "ep_len=",ep_len)
+        print("t=",t,"ep_ret=",ep_ret, "ep_len=",ep_len)
 
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
-        d = False if ep_len==max_ep_len else d
 
         # Store experience to replay buffer
-        agent.replay_buffer.store(o, a, r, o2, d)
+        agent.replay_buffer.store(o, a, r * reward_scale, o2, d)
 
         # Super critical, easy to overlook step: make sure to update 
         # most recent observation!
         o = o2
 
         # End of trajectory handling
-        if d or (ep_len == max_ep_len):
+        if d:
             #logger.store(EpRet=ep_ret, EpLen=ep_len)
             o, ep_ret, ep_len = env.reset(), 0, 0
             average_reward_data.append(reward_data)
@@ -88,7 +83,7 @@ if __name__ == "__main__":
             print("epoch=",epoch)
         
         # Update handling
-        if t >= update_after and t % update_every == 0:
+        if t >= update_after:
             batch = agent.replay_buffer.sample_batch(agent.batch_size)
             #print("before updating..")
             agent.learn(data=batch)

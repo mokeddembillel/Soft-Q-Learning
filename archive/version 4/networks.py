@@ -15,9 +15,9 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
 class MLPActor(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
+    def __init__(self, state_dim, action_dim, hidden_dim, activation, act_limit):
         super().__init__()
-        pi_sizes = [obs_dim] + list(hidden_sizes) + [act_dim]
+        pi_sizes = [state_dim] + hidden_dim + [action_dim]
         self.pi = mlp(pi_sizes, activation, nn.Tanh)
         self.act_limit = act_limit
 
@@ -27,12 +27,12 @@ class MLPActor(nn.Module):
 
 class MLPQFunction(nn.Module):
 
-    def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
+    def __init__(self, state_dim, action_dim, hidden_dim, activation):
         super().__init__()
-        self.act_dim = act_dim
-        # self.state_layer = nn.Linear(obs_dim,hidden_sizes[0])
-        # self.action_layer = nn.Linear(act_dim,hidden_sizes[0])
-        self.q = mlp([obs_dim + act_dim] + list(hidden_sizes) + [1], activation)
+        self.action_dim = action_dim
+        # self.state_layer = nn.Linear(state_dim,hidden_sizes[0])
+        # self.action_layer = nn.Linear(action_dim,hidden_sizes[0])
+        self.q = mlp([state_dim + action_dim] + hidden_dim + [1], activation)
 
     def forward(self, obs, act,n_sample = 1):
         if n_sample > 1:
@@ -43,17 +43,17 @@ class MLPQFunction(nn.Module):
 
 class MLPActorCritic(nn.Module):
 
-    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+    def __init__(self, observation_space, action_space, hidden_dim,
                  activation=nn.ReLU):
         super().__init__()
 
-        obs_dim = observation_space.shape[0]
-        act_dim = action_space.shape[0]
+        state_dim = observation_space.shape[0]
+        action_dim = action_space.shape[0]
         act_limit = action_space.high[0]
 
         # build policy and value functions
-        self.pi = MLPActor(obs_dim, act_dim, hidden_sizes, activation, act_limit)
-        self.q = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        self.pi = MLPActor(state_dim, action_dim, hidden_dim, activation, act_limit)
+        self.q = MLPQFunction(state_dim, action_dim, hidden_dim, activation)
 
     def act(self, obs):
         with T.no_grad():
@@ -62,24 +62,23 @@ class MLPActorCritic(nn.Module):
 
 
 class SamplingNetwork(nn.Module):
-    def __init__(self,noise_dim,n_particles,batch_size,observation_space,action_space,hidden_sizes = (256,256),
+    def __init__(self,n_particles,batch_size,observation_space,action_space,hidden_sizes = (256,256),
                 activation=nn.ReLU):
         super().__init__()
-        self.noise_dim = noise_dim
         self.n_particles = n_particles
         self.batch_size = batch_size
-        self.obs_dim = observation_space.shape[0]
-        self.act_dim = action_space.shape[0]
+        self.state_dim = observation_space.shape[0]
+        self.action_dim = action_space.shape[0]
 
         self.hidden_sizes = hidden_sizes
         self.activation = activation
 
-        # self.state_layer = mlp([self.obs_dim, hidden_sizes[0]], activation) 
-        # self.noise_layer = mlp([self.act_dim, hidden_sizes[0]],activation)
-        # self.layers = mlp(list(hidden_sizes) + [self.act_dim], activation, nn.Tanh)
+        # self.state_layer = mlp([self.state_dim, hidden_sizes[0]], activation) 
+        # self.noise_layer = mlp([self.action_dim, hidden_sizes[0]],activation)
+        # self.layers = mlp(list(hidden_sizes) + [self.action_dim], activation, nn.Tanh)
 
-        self.concat = mlp([self.act_dim + self.noise_dim] + list(hidden_sizes),activation)
-        self.layer2 =  mlp(list(hidden_sizes) + [self.act_dim], nn.Tanh, nn.Tanh)
+        self.concat = mlp([self.state_dim + self.action_dim] + list(hidden_sizes),activation)
+        self.layer2 =  mlp(list(hidden_sizes) + [self.action_dim], nn.Tanh, nn.Tanh)
 
     def _forward(self,state,n_particles = 1):
         n_state_samples = state.shape[0]
@@ -90,9 +89,9 @@ class SamplingNetwork(nn.Module):
 
             assert state.dim() == 3
             latent_shape = (n_state_samples, n_particles,
-                            self.act_dim)
+                            self.action_dim)
         else:
-            latent_shape = (n_state_samples, self.act_dim)
+            latent_shape = (n_state_samples, self.action_dim)
 
         noise = T.rand(latent_shape)*4-2
         # state_out = self.state_layer(state)

@@ -6,7 +6,7 @@ from buffer import ReplayBuffer
 #from networks import ActionValueNetwork, SamplerNetwork
 from torch.distributions.uniform import Uniform
 from torch.distributions.normal import Normal
-from networks import MLPActorCritic, SamplingNetwork
+from networks import SamplingNetwork, MLPQFunction
 import torch.optim as optim
 import time
 from copy import deepcopy
@@ -19,19 +19,14 @@ from multigoal import MultiGoalEnv
 
 
 class Agent():
-    def __init__(self, env_fn, actor_critic, sampler, ac_kwargs, seed, 
-         steps_per_epoch, replay_size, gamma, 
-         polyak, pi_lr, q_lr, batch_size, noise_dim, n_particles, start_steps, 
-         update_after, update_every, act_noise, num_test_episodes, 
-         max_ep_len):
+    def __init__(self, env_fn, hidden_dim, 
+         replay_size, gamma, pi_lr, q_lr, batch_size, n_particles):
 
         self.env= MultiGoalEnv()
         
         self.gamma = gamma
-        self.num_test_episodes = num_test_episodes
         self.n_particles = n_particles
         self.batch_size = batch_size
-        self.max_ep_len = max_ep_len
 
         
         
@@ -44,21 +39,19 @@ class Agent():
         # Action limit for clamping: critically, assumes all dimensions share the same bound!
         
         # Create actor-critic module and target networks
-        self.ac = actor_critic(self.env.observation_space, self.env.action_space, **ac_kwargs)
+        self.Q_Network = MLPQFunction(self.env.observation_space, self.env.action_space, hidden_dim)
         #self.ac_targ = deepcopy(self.ac)
         
-        self.sampler = sampler(noise_dim = noise_dim, batch_size = self.batch_size, n_particles = self.n_particles,
+        self.SVGD_Network = SamplingNetwork(batch_size = self.batch_size, n_particles = self.n_particles,
                     observation_space= self.env.observation_space, action_space = self.env.action_space)
         # # Freeze target networks with respect to optimizers (only update via polyak averaging)
         # for p in self.ac_targ.parameters():
         #     p.requires_grad = False
         
         # Set up optimizers for policy and q-function
-        self.pi_optimizer =optim.Adam(self.ac.pi.parameters(), lr=pi_lr)
-        self.q_optimizer = optim.Adam(self.ac.q.parameters(), lr=q_lr)
-        self.sampler_optimizer = optim.Adam(self.sampler.parameters(), lr=pi_lr)
+        self.q_optimizer = optim.Adam(self.Q_Network.parameters(), lr=q_lr)
+        self.sampler_optimizer = optim.Adam(self.SVGD_Network.parameters(), lr=pi_lr)
         
-        self.polyak = polyak
         
         # Experience buffer
         self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.action_dim, size=replay_size)
@@ -92,22 +85,48 @@ class Agent():
         return kappa, kappa_grad
     
     
+    
+    def compute_millowmax_target(self, Q_values):
+        # beta = 1
+        # mm_weights = []
+        
+        # max_Q = T.max(Q_values, dim=1)[0]
+        
+        mm_target = T.logsumexp(Q_values, dim=1) + T.log(T.tensor(1/self.n_particles))
+        
+        # denominator = T.sum(T.exp(beta * Q_values - max_Q.unsqueeze(-1)), dim=1)
+        
+        # for i in range(self.n_particles):
+        #     current_Q = Q_values[:, i]
+        #     current_Q_exp = T.exp(beta * current_Q - max_Q)
+        #     mm_weights.append(list((current_Q_exp / denominator).detach().numpy()))
+            
+        # mm_weights = T.tensor(np.array(mm_weights, dtype=np.double)).view(-1, self.n_particles)
+        
+        # mm_target = T.sum(Q_values * mm_weights, dim=1)
+            
+        return mm_target
+    
+    
     # Set up function for computing DDPG Q-loss
     def compute_loss_q(self, data):
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
     
-        aplus = T.from_numpy(self.sampler.act(o2,n_particles=self.n_particles))
+        aplus = T.from_numpy(self.SVGD_Network.act(o2,n_particles=self.n_particles))
         #print("aplus=",aplus.shape)
         
-        q = self.ac.q(o,a)
+        q = self.Q_Network(o,a)
         
-    
+        
         # Bellman backup for Q function
         with T.no_grad():
-            #q_pi_targ = ac_targ.q(o2, ac_targ.pi(o2))
-            q_pi_targ = T.logsumexp(self.ac.q(o2, aplus,n_sample=self.n_particles), dim=1)
-            #q_pi_targ += action * T.log(T.tensor([2.]))
-            backup = r + self.gamma * (1 - d) * q_pi_targ
+            Q_soft_ = self.Q_Network(o2, aplus,n_sample=self.n_particles)
+            V_soft_ = T.logsumexp(Q_soft_, dim=1)
+            V_soft_ += self.action_dim * T.log(T.tensor([2.]))
+            #mm_target = self.compute_millowmax_target(Q_soft_)
+            #print(mm_target)
+            #backup = r + self.gamma * (1 - d) * mm_target
+            backup = r + self.gamma * (1 - d) * V_soft_
     
         # MSE loss against Bellman backup
         loss_q = ((q - backup)**2).mean()
@@ -126,13 +145,17 @@ class Agent():
     def update_svgd_ss(self, data):
         
         o = data['obs']
-        actions = self.sampler(o,n_particles=self.n_particles)
+        actions = self.SVGD_Network(o,n_particles=self.n_particles)
         assert actions.shape == (self.batch_size,self.n_particles, self.action_dim)
         
-        fixed_actions = self.sampler.act(o,n_particles=self.n_particles)
+        fixed_actions = self.SVGD_Network.act(o,n_particles=self.n_particles)
         fixed_actions = T.from_numpy(fixed_actions)
         fixed_actions.requires_grad = True
-        svgd_target_values = self.ac.q(o, fixed_actions,n_sample = self.n_particles)
+        svgd_target_values = self.Q_Network(o, fixed_actions,n_sample = self.n_particles)
+        
+        # squash_correction = T.sum(T.log(1 - fixed_actions**2 + 1e-6), dim=-1)
+        # svgd_target_values = T.add(svgd_target_values, squash_correction)
+            
     
         # Target log-density. Q_soft in Equation 13:
         
@@ -171,14 +194,10 @@ class Agent():
         self.update_svgd_ss(data)
         #This PLACE
       
-    
-    def get_action(self, o, noise_scale):
-        a = self.ac.act(T.as_tensor(o, dtype=T.float32))
-        return np.clip(a, -self.action_bound, self.action_bound)
-    
+ 
      
     def get_sample(self, o,n_sample=1):
-        a = self.sampler.act(T.as_tensor(o, dtype=T.float32),n_particles=n_sample)
+        a = self.SVGD_Network.act(T.as_tensor(o, dtype=T.float32),n_particles=n_sample)
         # a += act_noise * np.random.randn(act_dim)
         return np.clip(a, -self.action_bound, self.action_bound) 
     
@@ -188,13 +207,13 @@ class Agent():
         actions_plot=[]
         env = MultiGoalEnv()
     
-        for episode in range(50):
+        for episode in range(30):
             observation = env.reset()
             done = False
             step = 0
             path = {'infos':{'pos':[]}}
             particles = None
-            while not done and step < self.max_ep_len :
+            while not done and step < 30 :
                 
                 actions = self.get_sample(observation,1)
                

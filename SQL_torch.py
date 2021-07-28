@@ -47,6 +47,17 @@ class Agent():
         # Experience buffer
         self.replay_buffer = ReplayBuffer(obs_dim=self.state_dim, act_dim=self.action_dim, size=replay_size)
 
+    def save_models(self):
+        print('.... saving models ....')
+        self.Q_Network.save_checkpoint()
+        self.SVGD_Network.save_checkpoint()
+
+    def load_models(self):
+        print('.... loading models ....')
+        self.Q_Network.load_checkpoint()
+        self.SVGD_Network.load_checkpoint()
+        
+
     def rbf_kernel(self, input_1, input_2,  h_min=1e-3):
         k_fix, out_dim1 = input_1.size()[-2:]
         k_upd, out_dim2 = input_2.size()[-2:]

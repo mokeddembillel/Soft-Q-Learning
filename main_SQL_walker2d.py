@@ -38,7 +38,7 @@ if __name__ == "__main__":
     
     
     
-
+    best_score = 0.0
     # Main loop: collect experience in env and update/log each epoch
     score_history = []
     steps_history = []
@@ -50,22 +50,23 @@ if __name__ == "__main__":
         ep_ret, ep_steps = 0, 0
         d = False
         epsilon = 0.8
+        target_updated = False
         while not d:
             #a = agent.get_sample(o, n_sample=n_particles)
-            if epsilon > 0.2:
+            if epsilon > 0.1:
                 epsilon -= 0.0001
         
             #a = agent.get_sample(o)
 
-            #a = agent.get_sample(o)
+            # a = agent.get_sample(o)
             if np.random.uniform(0,1) > epsilon: 
                 a = agent.get_sample(o, n_sample=n_particles)
                 # ind = np.random.choice(np.array([i for i in range(0, n_particles)]))
                 # a = a[ind]
                 Q_values = agent.Q_Network(T.tensor(o).float().unsqueeze(0).to(agent.Q_Network.device), T.from_numpy(a).float().unsqueeze(0).to(agent.Q_Network.device),n_sample=n_particles)
-                mm_weights = agent.compute_millowmax_target(Q_values).float().detach().numpy().squeeze()
-                ind = np.random.choice(np.array([i for i in range(0, n_particles)]), p=mm_weights)
-                # ind = T.argmax(Q_values)
+                # mm_weights = agent.compute_millowmax_target(Q_values).float().detach().numpy().squeeze()
+                # ind = np.random.choice(np.array([i for i in range(0, n_particles)]), p=mm_weights)
+                ind = T.argmax(Q_values)
                 a = a[ind]
             else:
                 a = np.random.uniform(-1,1, size=(env.action_space.shape[0]))
@@ -84,7 +85,8 @@ if __name__ == "__main__":
                 batch = agent.replay_buffer.sample_batch(agent.batch_size)
                 #print("before updating..")
                 agent.learn(t, data=batch)
-                if t % 10 == 0:
+                if t % 10 == 0 and not target_updated:
+                    target_updated = True
                     agent.target_Q_Network = deepcopy(agent.Q_Network)
                 #print("after updating..")
     
@@ -95,6 +97,16 @@ if __name__ == "__main__":
         steps_history.append(ep_steps)
         np.save('tmp/sql/score_history', np.array(score_history))
         np.save('tmp/sql/steps_history', np.array(steps_history))
+        avg_score = np.mean(score_history[-10:])
+        
+        if avg_score > best_score:
+            best_score = avg_score
+            agent.save_models()
+            
+        
+        
+        
+        
         print("episode=",t,"ep_ret=",ep_ret, "ep_len=",ep_steps)
         
         
